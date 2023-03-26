@@ -24,8 +24,7 @@ class MLP(nn.Module):
         for input, output in zip(layers, layers[1:]):
             self.lins.append(nn.Linear(input, output, dtype=dtype))
             self.bns.append(nn.BatchNorm1d(output, dtype=dtype))
-        # TODO: Xavier initialization
-        # nn.init.xavier(self.lins[-1].weight)
+            torch.nn.init.xavier_uniform_(self.lins[-1].weight)
         for p in dropout_probs:
             self.drops.append(nn.Dropout(p=p))
 
