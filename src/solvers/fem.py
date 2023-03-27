@@ -2,7 +2,7 @@ from typing import Callable, Union
 
 import numpy as np
 import torch
-
+from abc import ABC, abstractmethod
 from src.utils.quadrules import gauss_lobatto_jacobi_quadrature1D
 
 
@@ -162,46 +162,21 @@ class FEBasisFunctions:
         else:
             return 0
 
-# TODO: Write base class for FEM solvers
-class FEMSolver:
-    ...
-
-# TODO: Write FEM solver for diffusion problem with variable diffusion coefficient
-class Diffusion(FEMSolver):
-    ...
-
-class HelmholtzImpedance(FEMSolver):
-    """
-    Finite Element Method solver class for solving the 1D Helmholtz Impendace problem:
-        - u_xx - k^2 * u = f
-    in the domain (a, b), with impedance boundary conditions:
-        - u_x(a) - 1j * k * u(a) = ga
-        + u_x(b) - 1j * k * u(b) = gb
-    """
-
-    def __init__(self, f: Union[Callable, float], k: float, a: float, b: float, \
-        ga: complex, gb: complex, *, source: str ='const', N: int = 50, N_quad: int = None):
+class FEMSolver1D(ABC):
+    """Base class for 1D FEM solvers."""
+    def __init__(self, a: float, b: float, *, N: int = 50, N_quad: int = None):
 
         """Initializing the parameters
 
         Args:
-            f (function or float): Source function or the coefficient.
-            k (float): Equation coefficient.
             a (float): Left boundary.
             b (float): Right boundary.
-            ga (complex): Value of the left boundary condition.
-            gb (complex): Value of the right boundary condition.
-            source (str): Type of the source function. Valid values are: 'const', 'func'.
             N (int, optional): Number of discretization points. Defaults to 50.
             N_quad (int, optional): Number of quadrature points for int(f * phi).
         """
 
-        # Store equation parameters
-        self.source = source
-        self.f = f
-        self.k = k
+        # Store the parameters
         self.a, self.b = a, b
-        self.ga, self.gb = ga, gb
         self.N = N
         self.h = (b - a) / N
 
@@ -209,11 +184,7 @@ class HelmholtzImpedance(FEMSolver):
         self.FE = FEBasisFunctions(N, a, b, dtype=np.ndarray)
         self.bases = self.FE()
         if not N_quad:
-            if self.N * 10 > 1000:
-                self.N_quad = 1000
-                # print(f'Warning: More quadrature points are needed for N={self.N}. The final accuracy might be affected.')
-            else:
-                self.N_quad = self.N * 10
+            self.N_quad = min(self.N * 10, 1000)
         else:
             self.N_quad = N_quad
 
@@ -251,10 +222,9 @@ class HelmholtzImpedance(FEMSolver):
             [[self.c[i] * self.bases[i].deriv(1)(x)] for i in range(self.N + 1)]
             ), axis=0)
 
+    @abstractmethod
     def lhs(self, i, j) -> complex:
-        """Computes the left-hand-side of the system of the equations:
-            int(phi_x_i * phi_x_j) - k^2 * int(phi_i * phi_j)
-            - 1j * k * (phi_i(a) * phi_j(a) + phi_i(b) * phi_j(b))
+        """Computes the ij^{th} element of the left-hand-side of the system of the equations.
 
         Args:
             i (int): Index of the basis function.
@@ -263,15 +233,11 @@ class HelmholtzImpedance(FEMSolver):
         Returns:
             complex: The left-hand-side of the equation.
         """
+        ...
 
-        phi_i = self.bases[i]
-        phi_j = self.bases[j]
-        return self.FE.intphi_x(i, j) - self.k ** 2 * self.FE.intphi(i, j)\
-            - 1j * self.k * (phi_i(self.a) * phi_j(self.a) + phi_i(self.b) * phi_j(self.b))
-
+    @abstractmethod
     def rhs(self, j: int) -> complex:
-        """Computes the right-hand-side of the system of the equations:
-            int(f * phi_j) + ga * phi_j(a) + gb * phi_j(b)
+        """Computes the j^{th} element of the right-hand-side of the system of the equations.
 
         Args:
             j (int): Index of the test function.
@@ -279,25 +245,12 @@ class HelmholtzImpedance(FEMSolver):
         Returns:
             complex: The right-hand-side of the equation.
         """
-
-        phi_j = self.bases[j]
-
-        if self.source == 'const':
-            intfv = self.f * self.h
-            if j == 0 or j == self.N:
-                intfv = intfv / 2
-        elif self.source == 'func':
-            fv = lambda x: self.f(x) * phi_j(x)
-            intfv = self.intg(fv)
-        else:
-            raise ValueError(f'{self.source} is not a valid source type.')
-
-        return intfv + self.ga * phi_j(self.a) + self.gb * phi_j(self.b)
+        ...
 
     def H1_error(self, u: Callable, u_x: Callable) -> float:
         """Computes the H1 error:
         .. math::
-            \\sqrt{||u - u^N||_{L^2}^2 + ||\\frac{du}{dx} - \\frac{du^N}{dx}||_{L^2}^2}
+            \\sqrt{||u - u_N||_{L^2}^2 + ||\\frac{du}{dx} - \\frac{du_N}{dx}||_{L^2}^2}
 
         Args:
             u (Callable): Exact solution
@@ -349,32 +302,175 @@ class HelmholtzImpedance(FEMSolver):
             return
         return self.sol(x), self.der(x)
 
-# CHECK: Can uncertainty be for the source function or the boundary conditions?
-# Could it be for several of them?
-class ParameterizedSource:
-    """Class for using an FEM solver for a parameterized source function."""
+class Poisson1D(FEMSolver1D):
+    # TODO: Generalize to mixed boundary conditions
+    """
+    Finite Element Method solver class for solving the 1D Poisson equation:
+        - (k u_x)_x = f
+    in the domain (a, b), with Dirichlet boundary conditions:
+        u(a) = 0
+        u(b) = 0
+    """
 
-    def __init__(self, solver: FEMSolver, f: list[Callable]):
-        # Store attributes
+    def __init__(self, f: Callable, k: Callable, a: float = -1, b: float = +1,
+        N: int = 50, N_quad: int = None):
+
+        """Initializing the parameters
+
+        Args:
+            f: Source function.
+            k: Diffusion coefficient.
+            a: Left boundary.
+            b: Right boundary.
+            N: Number of discretization points. Defaults to 50.
+            N_quad: Number of quadrature points for int(f * phi).
+        """
+
+        # Store specific parameters
         self.f = f
+        self.k = k
+
+        super().__init__(a=a, b=b, N=N, N_quad=N_quad)
+
+    def lhs(self, i, j) -> complex:
+        """Computes the left-hand-side of the system of the equations:
+            int(phi_x_i * phi_x_j) - k^2 * int(phi_i * phi_j)
+            - 1j * k * (phi_i(a) * phi_j(a) + phi_i(b) * phi_j(b))
+
+        Args:
+            i (int): Index of the basis function.
+            j (int): Index of the test function.
+
+        Returns:
+            complex: The left-hand-side of the equation.
+        """
+
+        phi_i: DerivableFunction = self.bases[i]
+        phi_j: DerivableFunction = self.bases[j]
+
+        # TODO: Take the integral only on the small subdomain that the function is nonzero
+        kphiphi = lambda x: self.k(x) * phi_i.deriv(1)(x) * phi_j.deriv(1)(x)
+
+        return self.intg(kphiphi)
+
+    def rhs(self, j: int) -> complex:
+        """Computes the right-hand-side of the system of the equations:
+            \int(f * phi_j)
+
+        Args:
+            j (int): Index of the test function.
+
+        Returns:
+            complex: The right-hand-side of the equation.
+        """
+
+        phi_j = self.bases[j]
+        fv = lambda x: self.f(x) * phi_j(x)
+        intfv = self.intg(fv)
+
+        return intfv
+
+class HelmholtzImpedance1D(FEMSolver1D):
+    """
+    Finite Element Method solver class for solving the 1D Helmholtz Impendace problem:
+        - u_xx - k^2 * u = f
+    in the domain (a, b), with impedance boundary conditions:
+        - u_x(a) - 1j * k * u(a) = ga
+        + u_x(b) - 1j * k * u(b) = gb
+    """
+
+    def __init__(self, f: Union[Callable, float], k: float, a: float, b: float, \
+        ga: complex, gb: complex, *, source: str ='const', N: int = 50, N_quad: int = None):
+
+        """Initializing the parameters
+
+        Args:
+            f (function or float): Source function or the coefficient.
+            k (float): Equation coefficient.
+            a (float): Left boundary.
+            b (float): Right boundary.
+            ga (complex): Value of the left boundary condition.
+            gb (complex): Value of the right boundary condition.
+            source (str): Type of the source function. Valid values are: 'const', 'func'.
+            N (int, optional): Number of discretization points. Defaults to 50.
+            N_quad (int, optional): Number of quadrature points for int(f * phi).
+        """
+
+        # Store specific parameters
+        self.source = source
+        self.f = f
+        self.k = k
+        self.ga, self.gb = ga, gb
+
+        super().__init__(a=a, b=b, N=N, N_quad=N_quad)
+
+    def lhs(self, i, j) -> complex:
+        """Computes the left-hand-side of the system of the equations:
+            int(phi_x_i * phi_x_j) - k^2 * int(phi_i * phi_j)
+            - 1j * k * (phi_i(a) * phi_j(a) + phi_i(b) * phi_j(b))
+
+        Args:
+            i (int): Index of the basis function.
+            j (int): Index of the test function.
+
+        Returns:
+            complex: The left-hand-side of the equation.
+        """
+
+        phi_i = self.bases[i]
+        phi_j = self.bases[j]
+        return self.FE.intphi_x(i, j) - self.k ** 2 * self.FE.intphi(i, j)\
+            - 1j * self.k * (phi_i(self.a) * phi_j(self.a) + phi_i(self.b) * phi_j(self.b))
+
+    def rhs(self, j: int) -> complex:
+        """Computes the right-hand-side of the system of the equations:
+            int(f * phi_j) + ga * phi_j(a) + gb * phi_j(b)
+
+        Args:
+            j (int): Index of the test function.
+
+        Returns:
+            complex: The right-hand-side of the equation.
+        """
+
+        phi_j = self.bases[j]
+
+        if self.source == 'const':
+            intfv = self.f * self.h
+            if j == 0 or j == self.N:
+                intfv = intfv / 2
+        elif self.source == 'func':
+            fv = lambda x: self.f(x) * phi_j(x)
+            intfv = self.intg(fv)
+        else:
+            raise ValueError(f'{self.source} is not a valid source type.')
+
+        return intfv + self.ga * phi_j(self.a) + self.gb * phi_j(self.b)
+
+class ParameterizedSolver:
+    """Class for using an FEM solver with an affine parameterized uncertainty."""
+
+    def __init__(self, solver: FEMSolver1D, a: list[Callable], uc: str):
+        #: List of callables that define the uncertainty
+        self.a = a
+        #: A solver
         self.solver = solver
+        #: Name of the uncertainty argument of the solver
+        self.uc = uc
 
     def solve(self, y: np.ndarray):
         # Check shape of the input
-        assert y.shape[0] == len(self.f)
+        assert y.shape[0] == len(self.a)
 
         # Solution coefficients
         c = np.zeros(shape=(self.solver.N+1, y.shape[1]), dtype=complex)
         for j in range(y.shape[1]):
             # Generate source function
-            f = lambda x: np.sum([y[:, j][idx] * self.f[idx](x) for idx in range(len(y))])
+            a = lambda x: np.sum([y[:, j][idx] * self.a[idx](x) for idx in range(len(y))])
             # Solve with the generated source function
-            self.solver.f = f
+            self.solver.__dict__[self.uc] = a
             self.solver.solve()
             # Store the solution
             c[:, j] = self.solver.c
 
         return c
-
-class ParameterizedDiffusionCoefficient:
-    ...

@@ -8,7 +8,7 @@ import torchvision.datasets as tvdsets
 class MLP(nn.Module):
     def __init__(self, M, L, hidden_layers=[10, 10],
             activation=torch.sigmoid, dropout_probs=None,
-            bn=False, dtype=torch.dtype):
+            bn=False, gain: float = 1., dtype=torch.dtype):
         super().__init__()
         layers = [M] + hidden_layers + [L]
         if dropout_probs:
@@ -24,7 +24,8 @@ class MLP(nn.Module):
         for input, output in zip(layers, layers[1:]):
             self.lins.append(nn.Linear(input, output, dtype=dtype))
             self.bns.append(nn.BatchNorm1d(output, dtype=dtype))
-            torch.nn.init.xavier_uniform_(self.lins[-1].weight)
+            torch.nn.init.uniform_(self.lins[-1].weight, a=-gain, b=gain)
+            torch.nn.init.constant_(self.lins[-1].bias, val=0)
         for p in dropout_probs:
             self.drops.append(nn.Dropout(p=p))
 
@@ -40,7 +41,7 @@ class MLP(nn.Module):
         return x
 
     def train_(self, criterion, epochs, optimizer, trainloader, validationloader,
-            scheduler=None, cuda=False, report=None):
+            scheduler=None, cuda=False):
 
         if cuda and not torch.cuda.is_available():
             raise Exception('CUDA is not available.')
@@ -54,7 +55,7 @@ class MLP(nn.Module):
             'loss_trn': [None],
             'loss_val': [None],
             'lr': [None],
-            'params': {name: [p.data] for name, p in self.named_parameters()},
+            'params': {name: [p.data.detach().clone().numpy()] for name, p in self.named_parameters()},
             'grads': {name: [None] for name, _ in self.named_parameters()}
         }
         for epoch in range(epochs):
@@ -88,17 +89,8 @@ class MLP(nn.Module):
             stats['loss_val'].append(loss_val)
             stats['lr'].append(optimizer.param_groups[0]['lr'])
             for name, param in self.named_parameters():
-                stats['params'][name].append(param.data)
-                stats['grads'][name].append(param.grad)
-
-            # Print statistics
-            if report and (epoch % report) == 0:
-                print('\t'.join([
-                    f'EPOCH {epoch:05d}',
-                    f'TRN {loss_trn:.2e}',
-                    f'VAL {loss_val:.2e}' if loss_val else 'VAL N\A',
-                    f'LR {optimizer.param_groups[0]["lr"]:.2e}'
-                ]))
+                stats['params'][name].append(param.data.detach().clone().numpy())
+                stats['grads'][name].append(param.grad.detach().clone().numpy() if (param.grad is not None) else None)
 
         return stats
 
