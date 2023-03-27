@@ -7,8 +7,9 @@ import torchvision.datasets as tvdsets
 
 class MLP(nn.Module):
     def __init__(self, M, L, hidden_layers=[10, 10],
-            activation=torch.sigmoid, dropout_probs=None,
-            bn=False, gain: float = 1., dtype=torch.dtype):
+            activations: list = [torch.sigmoid, torch.relu],
+            dropout_probs=None, bn=False, gain: float = 1.,
+            dtype=torch.dtype):
         super().__init__()
         layers = [M] + hidden_layers + [L]
         if dropout_probs:
@@ -16,7 +17,7 @@ class MLP(nn.Module):
         else:
             dropout_probs = [0] * (len(layers) - 2)
         self.length = len(layers)
-        self.activation = activation
+        self.activations = activations
         self.bn = bn
         self.lins = nn.ModuleList()
         self.drops = nn.ModuleList()
@@ -32,11 +33,11 @@ class MLP(nn.Module):
     def forward(self, x):
         for i, f, bn in zip(range(self.length), self.lins, self.bns):
             if i == 0:
-                x = self.activation(bn(f(x)) if self.bn else f(x))
+                x = self.activations[0](bn(f(x)) if self.bn else f(x))
             elif i == len(self.lins) - 1:
-                x = self.activation(bn(f(x)) if self.bn else f(x))
+                x = self.activations[1](bn(f(x)) if self.bn else f(x))
             else:
-                x = self.activation(bn(f(x)) if self.bn else f(x))
+                x = self.activations[0](bn(f(x)) if self.bn else f(x))
                 x = self.drops[i - 1](x)
         return x
 
@@ -80,7 +81,7 @@ class MLP(nn.Module):
                 if cuda:
                     x, y = x.cuda(), y.cuda()
                 y_ = self(x)
-                loss = criterion(y_, y)
+                loss = criterion(y, y_)
                 loss_val += loss.item()
 
             # Store statistics
