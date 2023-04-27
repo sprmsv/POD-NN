@@ -380,7 +380,7 @@ class HelmholtzImpedance1D(FEMSolver1D):
     """
 
     def __init__(self, f: Union[Callable, float], k: float, a: float, b: float, \
-        ga: complex, gb: complex, *, source: str ='const', N: int = 50, N_quad: int = None):
+        ga: complex, gb: complex, *, N: int = 50, N_quad: int = None):
 
         """Initializing the parameters
 
@@ -391,13 +391,11 @@ class HelmholtzImpedance1D(FEMSolver1D):
             b (float): Right boundary.
             ga (complex): Value of the left boundary condition.
             gb (complex): Value of the right boundary condition.
-            source (str): Type of the source function. Valid values are: 'const', 'func'.
             N (int, optional): Number of discretization points. Defaults to 50.
             N_quad (int, optional): Number of quadrature points for int(f * phi).
         """
 
         # Store specific parameters
-        self.source = source
         self.f = f
         self.k = k
         self.ga, self.gb = ga, gb
@@ -435,13 +433,13 @@ class HelmholtzImpedance1D(FEMSolver1D):
 
         phi_j = self.bases[j]
 
-        if self.source == 'const':
+        if isinstance(self.f, Callable):
+            fv = lambda x: self.f(x) * phi_j(x)
+            intfv = self.intg(fv)
+        elif isinstance(self.f, float):
             intfv = self.f * self.h
             if j == 0 or j == self.N:
                 intfv = intfv / 2
-        elif self.source == 'func':
-            fv = lambda x: self.f(x) * phi_j(x)
-            intfv = self.intg(fv)
         else:
             raise ValueError(f'{self.source} is not a valid source type.')
 
@@ -450,7 +448,7 @@ class HelmholtzImpedance1D(FEMSolver1D):
 class ParameterizedSolver:
     """Class for using an FEM solver with an affine parameterized uncertainty."""
 
-    def __init__(self, solver: FEMSolver1D, a: list[Callable], uc: str):
+    def __init__(self, solver: FEMSolver1D, a: Union[list[Callable], list[float]], uc: str):
         #: List of callables that define the uncertainty
         self.a = a
         #: A solver
@@ -465,9 +463,13 @@ class ParameterizedSolver:
         # Solution coefficients
         c = np.zeros(shape=(self.solver.N+1, y.shape[1]), dtype=complex)
         for j in range(y.shape[1]):
-            # Generate source function
-            a = lambda x: np.sum([y[:, j][idx] * self.a[idx](x) for idx in range(len(y))])
-            # Solve with the generated source function
+            # Generate the uncertainty parameter
+            if isinstance(self.a[0], Callable):
+                a = lambda x: np.sum([y[:, j][idx] * self.a[idx](x) for idx in range(len(y))])
+            elif isinstance(self.a[0], (float, int)):
+                # MODIFY: Use matrix multiplication
+                a = np.sum([y[:, j][idx] * self.a[idx] for idx in range(len(y))])
+            # Solve with the generated parameter
             self.solver.__dict__[self.uc] = a
             self.solver.solve()
             # Store the solution

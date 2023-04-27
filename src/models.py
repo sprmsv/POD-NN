@@ -3,11 +3,12 @@ from torch import nn, optim
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
 import torchvision.datasets as tvdsets
+from typing import Callable
 
 
 class MLP(nn.Module):
     def __init__(self, M, L, hidden_layers=[10, 10],
-            activations: list = [torch.sigmoid, torch.relu],
+            activation: Callable = torch.relu,
             dropout_probs=None, bn=False, gain: float = 1.,
             dtype=torch.dtype):
         super().__init__()
@@ -17,7 +18,7 @@ class MLP(nn.Module):
         else:
             dropout_probs = [0] * (len(layers) - 2)
         self.length = len(layers)
-        self.activations = activations
+        self.activation = activation
         self.bn = bn
         self.lins = nn.ModuleList()
         self.drops = nn.ModuleList()
@@ -33,11 +34,11 @@ class MLP(nn.Module):
     def forward(self, x):
         for i, f, bn in zip(range(self.length), self.lins, self.bns):
             if i == 0:
-                x = self.activations[0](bn(f(x)) if self.bn else f(x))
+                x = self.activation(bn(f(x)) if self.bn else f(x))
             elif i == len(self.lins) - 1:
-                x = self.activations[1](bn(f(x)) if self.bn else f(x))
+                x = bn(f(x)) if self.bn else f(x)  # No activation on the last layer
             else:
-                x = self.activations[0](bn(f(x)) if self.bn else f(x))
+                x = self.activation(bn(f(x)) if self.bn else f(x))
                 x = self.drops[i - 1](x)
         return x
 
