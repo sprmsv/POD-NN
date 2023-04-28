@@ -4,6 +4,7 @@ from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
 import torchvision.datasets as tvdsets
 from typing import Callable
+from tqdm import tqdm
 
 
 class MLP(nn.Module):
@@ -60,7 +61,7 @@ class MLP(nn.Module):
             'params': {name: [p.data.detach().clone().numpy()] for name, p in self.named_parameters()},
             'grads': {name: [None] for name, _ in self.named_parameters()}
         }
-        for epoch in range(epochs):
+        for epoch in tqdm(range(epochs)):
 
             loss_trn = 0
             for x, y in trainloader:
