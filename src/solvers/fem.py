@@ -1,10 +1,64 @@
+from abc import ABC, abstractmethod
 from typing import Callable, Union
 
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import seaborn as sns
 import torch
-from abc import ABC, abstractmethod
+
 from src.utils.quadrules import gauss_lobatto_jacobi_quadrature1D
 
+
+def get_sol(u, bases):
+    assert len(u) == len(bases)
+    return lambda x: np.sum([u[i] * bases[i](x) for i in range(len(bases))], axis=0)
+
+def get_der(u, bases):
+    assert len(u) == len(bases)
+    return lambda x: np.sum([u[i] * bases[i].deriv(1)(x) for i in range(len(bases))], axis=0)
+
+def plot_bases(S, bases):
+
+    xs = np.linspace(-1, 1, 100)
+    us = []
+    # MODIFY: Combine these two loops
+    sols = [get_sol(S[:, j], bases) for j in range(S.shape[1])]
+    for idx, sol in enumerate(sols):
+        us.append(sol(xs))
+
+    df = pd.DataFrame({
+        'x': np.concatenate([xs] * len(us)),
+        'u_re': np.concatenate([u.real for u in us]),
+        'u_im': np.concatenate([u.imag for u in us]),
+        'j': np.concatenate([np.repeat(j, len(xs)) for j in range(len(sols))]),
+    })
+
+    fig, axs = plt.subplots(nrows=2, ncols=1, sharex=True, figsize=(20, 10))
+    sns.lineplot(
+        data=df,
+        x='x',
+        y='u_re',
+        hue='j',
+        ax=axs[0],
+    )
+    sns.lineplot(
+        data=df,
+        x='x',
+        y='u_im',
+        hue='j',
+        ax=axs[1],
+    )
+
+def H1_error(e: Callable, e_x: Callable, solver) -> float:
+
+    u2 = lambda x: abs(e(x)) ** 2
+    ux2 = lambda x: abs(e_x(x)) ** 2
+
+    err_u = np.sqrt(solver.intg(u2))
+    err_u_x = np.sqrt(solver.intg(ux2))
+
+    return err_u + err_u_x, err_u, err_u_x
 
 class DerivableFunction:
     def __init__(self, func: Callable, derivs: list =None):
