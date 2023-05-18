@@ -134,3 +134,6 @@ tmp.*
 .DS_Store
 results/
 data/
+*.ipynb
+
+
