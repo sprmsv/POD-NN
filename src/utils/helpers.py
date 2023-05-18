@@ -35,6 +35,7 @@ def MSE(output, target):
 
 def read_data(path: Union[str, Path], n_trn: int = None, n_val: int = None):
 
+    path = Path(path)
     Y_trn = np.load(path / 'Y_trn.npy')
     S_trn = np.load(path / 'S_trn.npy')
     Y_val = np.load(path / 'Y_val.npy')
