@@ -100,7 +100,7 @@ class MLP(nn.Module):
             'err_trn': [None],
             'err_val': [None],
         }
-        for epoch in tqdm(range(epochs)):
+        for epoch in tqdm(range(epochs, miniters=1000)):
             # Train one epoch
             loss_trn = 0
             self.train()
