@@ -164,6 +164,11 @@ if __name__ == '__main__':
     assert datadir.exists()
     Y_trn, S_trn, Y_val, S_val = read_data(path=datadir, n_trn=args.n_trn, n_val=args.n_val)
 
+    # Set experiment name
+    args.name = f'ntrn{args.n_trn:04d}_nval{args.n_val:04d}_L{args.L:03d}_D{args.D:02d}_W{args.W:03d}_lr{args.lr:.2e}'
+    print(f'DATA: {datadir.as_posix()}')
+    print(f'NAME: {args.name}')
+
     # Train a model
     stats = train_model(Y_trn, S_trn, Y_val, S_val, args)
 
@@ -193,7 +198,6 @@ if __name__ == '__main__':
         axs[1].set(ylabel='Relative Error', yscale='log', ylim=[1e-08, 1e04])
         axs[1].legend()
 
-        name = f'ntrn{args.n_trn:04d}_nval{args.n_val:04d}_L{args.L:03d}_D{args.D:02d}_W{args.W:03d}_lr{args.lr:.2e}.png'
-        file = Path('./results') / datadir.relative_to('./data') / name
+        file = Path('./results') / datadir.relative_to('./data') / (args.name + '.png')
         file.parent.mkdir(exist_ok=True, parents=True)
         fig.savefig(file)
