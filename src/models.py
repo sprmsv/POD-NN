@@ -80,7 +80,7 @@ class MLP(nn.Module):
         epochs,
         optimizer,
         trainloader, validationloader,
-        mod: int = 100,
+        mod=100,
         scheduler=None,
         cuda=False,
     ):

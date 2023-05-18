@@ -148,6 +148,7 @@ def train_model(Y_trn, S_trn, Y_val, S_val, args):
         optimizer=optimizer,
         trainloader=trainloader,
         validationloader=validationloader,
+        mod=100,
         scheduler=scheduler,
         cuda=False,
     )
@@ -185,9 +186,11 @@ if __name__ == '__main__':
         fig, axs = plt.subplots(1, 2, figsize=(20, 5))
         sns.lineplot(df, x='epoch', y='loss_trn', ax=axs[0], label='Training')
         sns.lineplot(df, x='epoch', y='loss_val', ax=axs[0], label='Validation')
-        axs[0].set(yscale='log', ylim=[1e-08, 1e04])
+        axs[0].set(ylabel='Loss', yscale='log', ylim=[1e-08, 1e04])
         axs[0].legend()
-        sns.lineplot(df, x='epoch', y='lr', ax=axs[1])
-        axs[1].set(yscale='log')
+        sns.lineplot(df, x='epoch', y='err_trn', ax=axs[1], label='Training')
+        sns.lineplot(df, x='epoch', y='err_val', ax=axs[1], label='Validation')
+        axs[1].set(ylabel='Relative Error', yscale='log', ylim=[1e-08, 1e04])
+        axs[1].legend()
 
         fig.savefig('tmp.png')
