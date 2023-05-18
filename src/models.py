@@ -17,6 +17,8 @@ class MLP(nn.Module):
         self.L = L
         self.V = torch.tensor(V)
         self.complex = torch.is_complex(self.V)
+        self.activation = activation
+        self.bn = bn
 
         # Build the layers, batch norms, dropouts
         super().__init__()
@@ -26,8 +28,6 @@ class MLP(nn.Module):
         else:
             dropout_probs = [0] * (len(layers) - 2)
         self.length = len(layers)
-        self.activation = activation
-        self.bn = bn
         self.lins = nn.ModuleList()
         self.drops = nn.ModuleList()
         self.bns = nn.ModuleList()
@@ -40,6 +40,7 @@ class MLP(nn.Module):
             self.drops.append(nn.Dropout(p=p))
 
     def forward(self, y):
+        # Get the output
         for i, f, bn in zip(range(self.length), self.lins, self.bns):
             if i == 0:
                 y = self.activation(bn(f(y)) if self.bn else f(y))
@@ -50,6 +51,7 @@ class MLP(nn.Module):
                 y = self.activation(bn(f(y)) if self.bn else f(y))
                 y = self.drops[i - 1](y)
 
+        # Get the output
         S, c = self.project(c)
 
         return S, c
@@ -71,9 +73,17 @@ class MLP(nn.Module):
 
         return S, c
 
-
-    def train_(self, criterion, epochs, optimizer, trainloader, validationloader,
-            scheduler=None, cuda=False, store_params=False):
+    def train_(
+        self,
+        criterion,
+        error,
+        epochs,
+        optimizer,
+        trainloader, validationloader,
+        mod: int = 100,
+        scheduler=None,
+        cuda=False,
+    ):
 
         if cuda and not torch.cuda.is_available():
             raise Exception('CUDA is not available.')
@@ -84,50 +94,68 @@ class MLP(nn.Module):
 
         stats = {
             'epoch': [0],
+            'lr': [None],
             'loss_trn': [None],
             'loss_val': [None],
-            'lr': [None],
-        }
-        params = {
-            'params': {name: [p.data.detach().clone().numpy()] for name, p in self.named_parameters()},
-            'grads': {name: [None] for name, _ in self.named_parameters()}
+            'err_trn': [None],
+            'err_val': [None],
         }
         for epoch in tqdm(range(epochs)):
-
+            # Train one epoch
             loss_trn = 0
+            self.train()
             for y, s in trainloader:
-                self.train()
-                if cuda:
-                    y, s = y.cuda(), s.cuda()
+                if cuda: y, s = y.cuda(), s.cuda()
                 s_, c_ = self(y)
                 loss = criterion(s_, s)
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
                 loss_trn += loss.item()
+
+            # Change the learning rate
             if scheduler:
                 scheduler.step()
 
-            loss_val = 0
-            for y, s in validationloader:
+            # Get stats
+            if (epoch % mod == 0) or (epoch == (epochs - 1)):
+                # Set to evaluation mode
                 self.eval()
-                if cuda:
-                    y, s = y.cuda(), s.cuda()
-                s_, c_ = self(y)
-                loss = criterion(s_, s)
-                loss_val += loss.item()
 
-            # Store statistics
-            stats['epoch'].append(epoch+1)
-            stats['loss_trn'].append(loss_trn)
-            stats['loss_val'].append(loss_val)
-            stats['lr'].append(optimizer.param_groups[0]['lr'])
-            if store_params:
-                for name, param in self.named_parameters():
-                    params['params'][name].append(param.data.detach().clone().numpy())
-                    params['grads'][name].append(param.grad.detach().clone().numpy() if (param.grad is not None) else None)
+                # Get validation loss
+                loss_val = 0
+                for y, s in validationloader:
+                    if cuda: y, s = y.cuda(), s.cuda()
+                    s_, c_ = self(y)
+                    loss = criterion(s_, s)
+                    loss_val += loss.item()
 
-        return stats, params
+                # Get training error
+                err_trn = 0
+                for y, s in trainloader:
+                    if cuda: y, s = y.cuda(), s.cuda()
+                    s_, c_ = self(y)
+                    err = error(s_, s)
+                    err_trn += err.item()
+
+                # Get validation error
+                err_val = 0
+                for y, s in validationloader:
+                    if cuda:
+                        y, s = y.cuda(), s.cuda()
+                    s_, c_ = self(y)
+                    err = error(s_, s)
+                    err_val += err.item()
+
+                # Store statistics
+                stats['epoch'].append(epoch+1)
+                stats['lr'].append(optimizer.param_groups[0]['lr'])
+                stats['loss_trn'].append(loss_trn)
+                stats['loss_val'].append(loss_val)
+                stats['err_trn'].append(err_trn)
+                stats['err_val'].append(err_val)
+
+        return stats
 
     def __len__(self):
         return self.length - 2
