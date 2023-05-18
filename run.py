@@ -193,4 +193,7 @@ if __name__ == '__main__':
         axs[1].set(ylabel='Relative Error', yscale='log', ylim=[1e-08, 1e04])
         axs[1].legend()
 
-        fig.savefig('tmp.png')
+        name = f'ntrn{args.n_trn:04d}_nval{args.n_val:04d}_L{args.L:03d}_D{args.D:02d}_W{args.W:03d}_lr{args.lr:.2e}.png'
+        file = Path('./results') / datadir.relative_to('./data') / name
+        file.parent.mkdir(parents=True)
+        fig.savefig(file)
