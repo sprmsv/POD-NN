@@ -8,17 +8,25 @@ from tqdm import tqdm
 
 
 class MLP(nn.Module):
-    def __init__(self, M, L, V, hidden_layers=[10, 10],
-            activation: Callable = torch.relu,
+    def __init__(self, M, L, hidden_layers=[10, 10],
+            activation: Callable = torch.tanh,
+            meanstd_in: tuple = (0., 1.),
+            meanstd_out: tuple = (0., 1.),
             dropout_probs=None, bn=False, gain: float = 1.,
-            dtype=torch.dtype):
+            complex: bool = False,
+            dtype: torch.dtype = torch.float64):
 
-        # Store parameters
+        # Store the parameters
         self.L = L
-        self.V = torch.tensor(V)
-        self.complex = torch.is_complex(self.V)
+        self.complex = complex
         self.activation = activation
         self.bn = bn
+
+        # Store the means and standard deviations
+        self.mean_in = torch.tensor(meanstd_in[0]).reshape(1, -1)
+        self.std_in = torch.tensor(meanstd_in[1]).reshape(1, -1)
+        self.mean_out = torch.tensor(meanstd_out[0]).reshape(1, -1)
+        self.std_out = torch.tensor(meanstd_out[1]).reshape(1, -1)
 
         # Build the layers, batch norms, dropouts
         super().__init__()
@@ -40,6 +48,9 @@ class MLP(nn.Module):
             self.drops.append(nn.Dropout(p=p))
 
     def forward(self, y):
+        # Normalize the input
+        y = (y - self.mean_in) / self.std_in
+
         # Get the output
         for i, f, bn in zip(range(self.length), self.lins, self.bns):
             if i == 0:
@@ -51,12 +62,14 @@ class MLP(nn.Module):
                 y = self.activation(bn(f(y)) if self.bn else f(y))
                 y = self.drops[i - 1](y)
 
-        # Get the output
-        S, c = self.project(c)
+        return c
 
-        return S, c
+    def project(self, c, V):
+        """
+        Projects the output of the network to the high-fidelity basis with samples on the columns.
+        The output is unnormalized before being projected.
+        """
 
-    def project(self, c):
         # Fetch L
         L = self.L
 
@@ -64,26 +77,31 @@ class MLP(nn.Module):
         if self.complex:
             c = (c[:, :L] + 1j * c[:, L:])
 
+        # Unnormalize the output
+        c = self.std_out * c + self.mean_out
+
         # Change the basis
-        S = (self.V @ c.T).T
+        S = (V @ c.T).T
 
-        # Separate the real and the imaginary parts if necessary
-        # if self.complex:
-        #     S = torch.concatenate([S.real, S.imag], dim=1)
-
-        return S, c
+        return S
 
     def train_(
         self,
         criterion,
         error,
+        V,
         epochs,
         optimizer,
-        trainloader, validationloader,
+        trainloader,
+        validationloader,
         mod=100,
         scheduler=None,
         cuda=False,
     ):
+        """
+        Trains the network.
+        The dataloaders should return non-normalized inputs and normalized outputs.
+        """
 
         if cuda and not torch.cuda.is_available():
             raise Exception('CUDA is not available.')
@@ -91,6 +109,8 @@ class MLP(nn.Module):
             self.cuda()
             criterion.cuda()
             optimizer.cuda()
+
+        V = torch.tensor(V)
 
         stats = {
             'epoch': [0],
@@ -100,14 +120,14 @@ class MLP(nn.Module):
             'err_trn': [None],
             'err_val': [None],
         }
-        for epoch in tqdm(range(epochs), mininterval=300):
+        for epoch in tqdm(range(epochs), mininterval=1):
             # Train one epoch
             loss_trn = 0
             self.train()
-            for y, s in trainloader:
-                if cuda: y, s = y.cuda(), s.cuda()
-                s_, c_ = self(y)
-                loss = criterion(s_, s)
+            for y, c in trainloader:
+                if cuda: y, c = y.cuda(), c.cuda()
+                c_ = self(y)
+                loss = criterion(c_, c)
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -124,27 +144,27 @@ class MLP(nn.Module):
 
                 # Get validation loss
                 loss_val = 0
-                for y, s in validationloader:
-                    if cuda: y, s = y.cuda(), s.cuda()
-                    s_, c_ = self(y)
-                    loss = criterion(s_, s)
+                for y, c in validationloader:
+                    if cuda: y, c = y.cuda(), c.cuda()
+                    c_ = self(y)
+                    loss = criterion(c_, c)
                     loss_val += loss.item()
 
                 # Get training error
                 err_trn = 0
-                for y, s in trainloader:
-                    if cuda: y, s = y.cuda(), s.cuda()
-                    s_, c_ = self(y)
-                    err = error(s_, s)
+                for y, c in trainloader:
+                    if cuda: y, c = y.cuda(), c.cuda()
+                    c_ = self(y)
+                    err = error(self.project(c_, V), self.project(c, V))
                     err_trn += err.item()
 
                 # Get validation error
                 err_val = 0
-                for y, s in validationloader:
+                for y, c in validationloader:
                     if cuda:
-                        y, s = y.cuda(), s.cuda()
-                    s_, c_ = self(y)
-                    err = error(s_, s)
+                        y, c = y.cuda(), c.cuda()
+                    c_ = self(y)
+                    err = error(self.project(c_, V), self.project(c, V))
                     err_val += err.item()
 
                 # Store statistics

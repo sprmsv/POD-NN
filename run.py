@@ -55,6 +55,16 @@ def get_parser():
     )
 
     parser.add_argument(
+        '--normalize-output', action='store_true', dest='normalizeout',
+        help='If passed, the outputs will be normalized.',
+    )
+
+    parser.add_argument(
+        '--normalize-input', action='store_true', dest='normalizein',
+        help='If passed, the inputs will be normalized.',
+    )
+
+    parser.add_argument(
         '--epochs', type=float, default=1000, dest='epochs',
         help='Number of training epochs',
     )
@@ -88,41 +98,54 @@ def train_model(Y_trn, S_trn, Y_val, S_val, args):
     assert Y_trn.shape[0] == Y_val.shape[0]
     assert S_trn.shape[0] == S_val.shape[0]
 
-    # Get mean and std
-    # mean_S_trn, std_S_trn = S_trn.mean(axis=1), S_trn.std(axis=1)
-    # mean_Y_trn, std_Y_trn = Y_trn.mean(axis=1), Y_trn.std(axis=1)
-
     # Settings
     bsz = None
     batch_norm = False
     if batch_norm and bsz: assert bsz > 1
 
+    # Get the reduced basis
+    pod = mr.compute_POD_arrays_snaps_method(S_trn, list(mr.range(args.L)))
+    V = pod.modes
+
+    # Get the projected coefficients
+    C_trn = V.conj().T @ S_trn
+    C_val = V.conj().T @ S_val
+
+
+    # Get mean and std of the inputs
+    if args.normalizein:
+        mean_Y_trn, std_Y_trn = Y_trn.mean(axis=1, keepdims=True), Y_trn.std(axis=1, keepdims=True)
+    else:
+        mean_Y_trn, std_Y_trn = (0., 1.)
+
+    # Get mean and std of outputs
+    if args.normalizeout:
+        mean_C_trn, std_C_trn = C_trn.mean(axis=1, keepdims=True), C_trn.std(axis=1, keepdims=True)
+        mean_C_val, std_C_val = C_val.mean(axis=1, keepdims=True), C_val.std(axis=1, keepdims=True)
+    else:
+        mean_C_trn, std_C_trn = (0., 1.)
+        mean_C_val, std_C_val = (0., 1.)
+
     # Define the data loaders
     trainloader = DataLoader(
-        dataset=PairDataset(Y=Y_trn, S=S_trn),
+        dataset=PairDataset(Y=Y_trn, C=((C_trn - mean_C_trn) / std_C_trn)),
         batch_size=(bsz if bsz else Y_trn.shape[1]),
         shuffle=True,
         drop_last=batch_norm,
     )
     validationloader = DataLoader(
-        dataset=PairDataset(Y=Y_val, S=S_val),
+        dataset=PairDataset(Y=Y_val, C=((C_val - mean_C_val) / std_C_val)),
         batch_size=(bsz if bsz else Y_val.shape[1]),
         shuffle=False,
     )
-
-    # Get the reduced basis
-    pod = mr.compute_POD_arrays_snaps_method(S_trn, list(mr.range(args.L)))
-    V = pod.modes
-
-    # Calculate the reference coefficients
-    # c_trn = V.conj().T @ S_trn
-    # c_val = V.conj().T @ S_val
 
     # Define model, criterion, optimizer, and scheduler
     model = MLP(
         M=Y_trn.shape[0],
         L=args.L,
-        V=V,
+        complex=False,
+        meanstd_in=(mean_Y_trn, std_Y_trn),
+        meanstd_out=(mean_C_trn, std_C_trn),
         hidden_layers=([args.W] * args.D),
         activation=torch.tanh,
         gain=1.,
@@ -144,6 +167,7 @@ def train_model(Y_trn, S_trn, Y_val, S_val, args):
     stats = model.train_(
         criterion=MSE,
         error=RelMSE,
+        V=V,
         epochs=args.epochs,
         optimizer=optimizer,
         trainloader=trainloader,

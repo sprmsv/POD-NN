@@ -11,18 +11,18 @@ def changeType(x, target='Tensor'):
             return torch.tensor(x)
 
 class PairDataset(Dataset):
-    def __init__(self, Y: np.ndarray, S: np.ndarray):
-        assert Y.shape[1] == S.shape[1]
-        self.len = S.shape[1]
+    def __init__(self, Y: np.ndarray, C: np.ndarray):
+        assert Y.shape[1] == C.shape[1]
+        self.len = C.shape[1]
 
         self.Y = torch.tensor(Y.T)
-        if np.iscomplexobj(S):
-            self.S = torch.tensor(np.concatenate([S.real, S.imag]).T)
+        if np.iscomplexobj(C):
+            self.C = torch.tensor(np.concatenate([C.real, C.imag]).T)
         else:
-            self.S = torch.tensor(S.T)
+            self.C = torch.tensor(C.T)
 
     def __getitem__(self, j: int) -> tuple[torch.Tensor]:
-        return self.Y[j], self.S[j]
+        return self.Y[j], self.C[j]
 
     def __len__(self):
         return self.len
