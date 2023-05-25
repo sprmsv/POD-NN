@@ -133,6 +133,5 @@ refs/
 tmp.*
 .DS_Store
 results/
-data/
 *.ipynb
 run.sh
