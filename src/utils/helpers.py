@@ -1,3 +1,4 @@
+import h5py
 import numpy as np
 import torch
 from torch.utils.data import Dataset
@@ -36,10 +37,10 @@ def MSE(output, target):
 def read_data(path: Union[str, Path], n_trn: int = None, n_val: int = None):
 
     path = Path(path)
-    Y_trn = np.load(path / 'Y_trn.npy')
-    S_trn = np.load(path / 'S_trn.npy')
-    Y_val = np.load(path / 'Y_val.npy')
-    S_val = np.load(path / 'S_val.npy')
+    Y_trn = h5py.File((path / 'hfparams.h5'), 'r')['Parameters'][:].T
+    Y_val = h5py.File((path / 'hfparamsTest.h5'), 'r')['ParametersTest'][:].T
+    S_trn = h5py.File((path / 'hfsolutions.h5'), 'r')['HfSolutions'][:].T
+    S_val = h5py.File((path / 'hfsolutionsTest.h5'), 'r')['HfSolutionsTest'][:].T
 
     if n_trn:
         Y_trn, S_trn = Y_trn[:, :n_trn], S_trn[:, :n_trn]
