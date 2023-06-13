@@ -133,5 +133,3 @@ refs/
 tmp.*
 .DS_Store
 results/
-# *.ipynb
-*.sh
