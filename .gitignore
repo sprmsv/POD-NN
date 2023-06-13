@@ -134,4 +134,4 @@ tmp.*
 .DS_Store
 results/
 # *.ipynb
-run.sh
+*.sh

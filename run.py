@@ -84,11 +84,6 @@ def get_parser():
         help='Use a scheduler for learning rate',
     )
 
-    parser.add_argument(
-        '--verbose', action='store_true', dest='verbose',
-        help='Repeat the training n times',
-    )
-
     return parser
 
 def train_model(Y_trn, S_trn, Y_val, S_val, args):
@@ -165,7 +160,7 @@ def train_model(Y_trn, S_trn, Y_val, S_val, args):
     # Train the model
     print(f'{model.__class__.__name__} with {model.numparams()} parameters')
     stats = model.train_(
-        criterion=MSE,
+        criterion=RelMSE,
         error=RelMSE,
         V=V,
         epochs=args.epochs,
@@ -208,20 +203,20 @@ if __name__ == '__main__':
         f"Validation: {stats['err_val'][-1]:.2e}",
     ]))
 
-    # Plot the training procedure
-    if args.verbose:
-        # Plot the stats
-        df = pd.DataFrame(stats)
-        fig, axs = plt.subplots(1, 2, figsize=(20, 5))
-        sns.lineplot(df, x='epoch', y='loss_trn', ax=axs[0], label='Training')
-        sns.lineplot(df, x='epoch', y='loss_val', ax=axs[0], label='Validation')
-        axs[0].set(ylabel='Loss', yscale='log', ylim=[1e-06, 1e04])
-        axs[0].legend()
-        sns.lineplot(df, x='epoch', y='err_trn', ax=axs[1], label='Training')
-        sns.lineplot(df, x='epoch', y='err_val', ax=axs[1], label='Validation')
-        axs[1].set(ylabel='Relative Error', yscale='log', ylim=[1e-06, 1e04])
-        axs[1].legend()
-
-        file = Path('./results') / datadir.relative_to('./data') / (args.name + '.png')
-        file.parent.mkdir(exist_ok=True, parents=True)
-        fig.savefig(file)
+    # Set the path of the results
+    results = Path('./results') / datadir.relative_to('./data')
+    results.mkdir(exist_ok=True, parents=True)
+    # Store the stats
+    df = pd.DataFrame(stats)
+    df.to_csv(results / (args.name + '.csv'))
+    # Store the plot of the stats
+    fig, axs = plt.subplots(1, 2, figsize=(20, 5))
+    sns.lineplot(df, x='epoch', y='loss_trn', ax=axs[0], label='Training')
+    sns.lineplot(df, x='epoch', y='loss_val', ax=axs[0], label='Validation')
+    axs[0].set(ylabel='Loss', yscale='log', ylim=[1e-06, 1e04])
+    axs[0].legend()
+    sns.lineplot(df, x='epoch', y='err_trn', ax=axs[1], label='Training')
+    sns.lineplot(df, x='epoch', y='err_val', ax=axs[1], label='Validation')
+    axs[1].set(ylabel='Relative Error', yscale='log', ylim=[1e-06, 1e04])
+    axs[1].legend()
+    fig.savefig(results / (args.name + '.png'))
