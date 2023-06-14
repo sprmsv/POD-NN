@@ -208,7 +208,7 @@ if __name__ == '__main__':
     results.mkdir(exist_ok=True, parents=True)
     # Store the stats
     df = pd.DataFrame(stats)
-    df.to_csv(results / (args.name + '.csv'))
+    df.to_csv(results / (args.name + '.csv'), index=False)
     # Store the plot of the stats
     fig, axs = plt.subplots(1, 2, figsize=(20, 5))
     sns.lineplot(df, x='epoch', y='loss_trn', ax=axs[0], label='Training')
