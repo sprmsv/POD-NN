@@ -112,6 +112,9 @@ class MLP(nn.Module):
 
         V = torch.tensor(V)
 
+        # Get the initial learning rate
+        lr = optimizer.param_groups[0]['lr']
+
         stats = {
             'epoch': [0],
             'lr': [None],
@@ -121,6 +124,14 @@ class MLP(nn.Module):
             'err_val': [None],
         }
         for epoch in tqdm(range(epochs), mininterval=1):
+            # Warmup learning rate
+            if epoch == 0:
+                for pg in optimizer.param_groups:
+                    pg['lr'] = 5e-04
+            elif epoch == 1000:
+                for pg in optimizer.param_groups:
+                    pg['lr'] = lr
+
             # Train one epoch
             loss_trn = 0
             self.train()
@@ -133,9 +144,10 @@ class MLP(nn.Module):
                 optimizer.step()
                 loss_trn += loss.item()
 
+            # TODO: Update considering the warmup
             # Change the learning rate
-            if scheduler:
-                scheduler.step()
+            # if scheduler:
+            #     scheduler.step()
 
             # Get stats
             if (epoch % mod == 0) or (epoch == (epochs - 1)):

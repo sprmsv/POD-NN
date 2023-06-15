@@ -152,10 +152,11 @@ def train_model(Y_trn, S_trn, Y_val, S_val, args):
         momentum=.9,
         weight_decay=args.wd,
     )
-    scheduler = (
-        torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, eta_min=1e-04, T_max=args.epochs)
-        if args.scheduler else None
-    )
+    # TODO: Update the scheduler while considering the warmup stage
+    # scheduler = (
+    #     torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, eta_min=1e-04, T_max=args.epochs)
+    #     if args.scheduler else None
+    # )
 
     # Train the model
     print(f'{model.__class__.__name__} with {model.numparams()} parameters')
@@ -168,7 +169,7 @@ def train_model(Y_trn, S_trn, Y_val, S_val, args):
         trainloader=trainloader,
         validationloader=validationloader,
         mod=100,
-        scheduler=scheduler,
+        # scheduler=scheduler,
         cuda=False,
     )
 
