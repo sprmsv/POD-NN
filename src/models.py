@@ -135,7 +135,7 @@ class MLP(nn.Module):
             # Train one epoch
             loss_trn = 0
             self.train()
-            for y, c in trainloader:
+            for y, _, c in trainloader:
                 if cuda: y, c = y.cuda(), c.cuda()
                 c_ = self(y)
                 loss = criterion(c_, c)
@@ -156,7 +156,7 @@ class MLP(nn.Module):
 
                 # Get validation loss
                 loss_val = 0
-                for y, c in validationloader:
+                for y, _, c in validationloader:
                     if cuda: y, c = y.cuda(), c.cuda()
                     c_ = self(y)
                     loss = criterion(c_, c)
@@ -164,19 +164,18 @@ class MLP(nn.Module):
 
                 # Get training error
                 err_trn = 0
-                for y, c in trainloader:
-                    if cuda: y, c = y.cuda(), c.cuda()
+                for y, s, _ in trainloader:
+                    if cuda: y, s = y.cuda(), s.cuda()
                     c_ = self(y)
-                    err = error(self.project(c_, V), self.project(c, V))
+                    err = error(self.project(c_, V), s)
                     err_trn += err.item()
 
                 # Get validation error
                 err_val = 0
-                for y, c in validationloader:
-                    if cuda:
-                        y, c = y.cuda(), c.cuda()
+                for y, s, _ in validationloader:
+                    if cuda: y, s = y.cuda(), s.cuda()
                     c_ = self(y)
-                    err = error(self.project(c_, V), self.project(c, V))
+                    err = error(self.project(c_, V), s)
                     err_val += err.item()
 
                 # Store statistics

@@ -123,13 +123,13 @@ def train_model(Y_trn, S_trn, Y_val, S_val, args):
 
     # Define the data loaders
     trainloader = DataLoader(
-        dataset=PairDataset(Y=Y_trn, C=((C_trn - mean_C_trn) / std_C_trn)),
+        dataset=PairDataset(Y=Y_trn, S=S_trn, C=((C_trn - mean_C_trn) / std_C_trn)),
         batch_size=(bsz if bsz else Y_trn.shape[1]),
         shuffle=True,
         drop_last=batch_norm,
     )
     validationloader = DataLoader(
-        dataset=PairDataset(Y=Y_val, C=((C_val - mean_C_val) / std_C_val)),
+        dataset=PairDataset(Y=Y_val, S=S_val, C=((C_val - mean_C_val) / std_C_val)),
         batch_size=(bsz if bsz else Y_val.shape[1]),
         shuffle=False,
     )
